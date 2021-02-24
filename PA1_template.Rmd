@@ -11,6 +11,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(data.table)
 ```
 
+***
 ## Loading and preprocessing the data
 ```{r}
 # unzip if not yet done
@@ -20,10 +21,16 @@ if (!file.exists("./activity.csv")) {
 }
 
 dt <- data.table::fread(file = "./activity.csv")
+head(dt)
 ```
 
+### Pairs
+```{r}
+# preview
+pairs(dt)
+```
 
-
+***
 ## What is mean total number of steps taken per day?
 ```{r}
 # daily aggregation
@@ -34,8 +41,8 @@ mean_by_day <- round(mean(aggregated_by_day$daily_total), 0)
 ```
 Mean total number of steps taken per day: `r mean_by_day`
 
-
-## What is the average daily activity pattern?
+***
+### Histogram I.
 ```{r}
 # plot histogram
 hist(aggregated_by_day$daily_total,
@@ -43,24 +50,200 @@ hist(aggregated_by_day$daily_total,
      main = "Daily Total Steps Oct & Nov 2012")
 
 # calculate & plot mean
-daily_mean <- round(mean(aggregated_by_day$daily_total, na.rm = TRUE), 0)
-abline(v = daily_mean, col="blue", lwd = 3)
+daily_mean <- round(mean(aggregated_by_day$daily_total, 
+                         na.rm = TRUE), 0)
+abline(v = daily_mean, col = "blue", lwd = 3)
 
 # calculate & plot median
-daily_median <- median(aggregated_by_day$daily_total, na.rm = TRUE)
-abline(v = daily_median, col="red", lwd = 3)
+daily_median <- median(aggregated_by_day$daily_total,
+                       na.rm = TRUE)
+abline(v = daily_median, col = "red", lwd = 3)
 
-# annotate
-text(19000, 25, "mean",   col = "blue", cex = 1.2, pos = 4)
-text(19000, 20, "median", col = "red",  cex = 1.2, pos = 4)
+# add text 'mean'
+text(19000,
+     25,
+     "mean",
+     col = "blue",
+     cex = 1.2,
+     pos = 4)
+
+# add text 'median'
+text(19000,
+     20,
+     "median",
+     col = "red",
+     cex = 1.2,
+     pos = 4)
 ```
   
 The mean of the daily number of steps taken: `r daily_mean`  
 The median of the daily number of steps taken: `r daily_median`
 
+***
+## What is the average daily activity pattern?
+Make a time series plot (i.e. type = "l") of the 5-minute interval (x-axis) and the average number of steps taken, averaged across all days (y-axis)
+Which 5-minute interval, on average across all the days in the dataset, contains the maximum number of steps?
+```{r}
+# aggregate by intervals
+aggregated_by_intervals <- dt[, .(interval_mean = mean(steps, na.rm = TRUE)), 
+                              keyby = .(interval)]
+# plot
+plot(x = aggregated_by_intervals$interval,
+     y = aggregated_by_intervals$interval_mean,
+     type = "l")
 
+# determine interval with maximum number of steps
+max_interval <- aggregated_by_intervals[
+    order(interval_mean, 
+          decreasing = TRUE), interval][1]
+
+```
+Interval `r max_interval` contains the maximum number of steps.
+
+***
 ## Imputing missing values
+### Nr of Missing Values
+```{r}
+countNAs <- sum(!complete.cases(dt))
+```
+The total number of missing values in the dataset (i.e. the total number of rows with NAs) is `r countNAs`.  
 
+### Impute Missing Values & Create New Dataset
+```{r}
+# use the impute.knn function ======
+# create a matrix based on dt
+mx <- copy(dt)
+# convert date into numeric value (for matrix)
+mx[, date := as.numeric(date)]
+mx <- as.matrix(mx)
+# impute
+library(impute)
+mx <- impute.knn(mx)$data
+# paste back imputed steps data into new working file
+dt2 <- as.data.table(mx)
+dt2[, date := dt$date]
+dt2
+```
+I filled in missing values using the impute.knn() function and created new dataset: dt2.
 
+### Histogram II.
+Make a histogram of the total number of steps taken each day and Calculate and report the mean and median total number of steps taken per day. Do these values differ from the estimates from the first part of the assignment? What is the impact of imputing missing data on the estimates of the total daily number of steps?
+```{r}
+# daily aggregation
+aggregated_by_day2 <- dt2[, .(daily_total = sum(steps, na.rm = TRUE)),
+                        keyby = .(date)]
+# plot histogram
+hist(aggregated_by_day2$daily_total,
+     xlab = "Number of Steps",
+     main = "Imputed Daily Total Steps Oct & Nov 2012")
 
+# calculate & plot mean
+daily_mean2 <- round(mean(aggregated_by_day2$daily_total, 
+                         na.rm = TRUE), 0)
+abline(v = daily_mean2, col = "blue", lwd = 3)
+
+# calculate & plot median
+daily_median2 <- median(aggregated_by_day2$daily_total,
+                       na.rm = TRUE)
+
+abline(v = daily_median2, col = "red", lwd = 3)
+
+# add text 'mean'
+text(19000,
+     25,
+     "mean",
+     col = "blue",
+     cex = 1.2,
+     pos = 4)
+
+# add text 'median'
+text(19000,
+     20,
+     "median",
+     col = "red",
+     cex = 1.2,
+     pos = 4)
+```
+  
+The total number of steps by day increased from `r daily_mean` to `r as.character(daily_mean2)`.  
+The median of steps by day remained unchanged:  
+Median I.: `r daily_median`  
+Median II.: `r as.character(daily_median2)`
+
+***
 ## Are there differences in activity patterns between weekdays and weekends?
+```{r}
+dt2[, weekday := weekdays(date)]
+dt2[, day_type := ifelse(weekday %in% c("Saturday", "Sunday"),
+                         "weekend",
+                         "weekday")]
+# aggregate by intervals
+aggregated_by_intervals2 <- dt2[, .(steps_mean = mean(steps, na.rm = TRUE)), 
+                              keyby = .(interval, day_type)]
+# ggplot
+library(ggplot2)
+ggplot(data = aggregated_by_intervals2, 
+       mapping = aes(x = interval, y = steps_mean, colour = day_type)) +
+    geom_line() +
+    geom_smooth()
+
+```
+  
+On weekends there is less activity in the early morning hours, but more activity during the day.  
+
+### The same again with Base R plot (just for fun)
+```{r}
+# weekday =====================================================================
+# create vector x
+vxwdi <- aggregated_by_intervals2[day_type == "weekday", interval]
+# create vector y
+vywdy <- aggregated_by_intervals2[day_type == "weekday", steps_mean]
+
+# create smooth line
+lo <- loess(vywdy~vxwdi)
+
+# plot
+plot(x = vxwdi,
+     y = vywdy,
+     type = "l",
+     xlab = "time",
+     ylab = "mean steps",
+     main = "Mean Steps Weekday vs Weekend")
+
+# add smoother
+lines(x = vxwdi,
+      y = predict(lo), 
+      col='black', 
+      lwd=2)
+
+# weekend =====================================================================
+
+# create vector x
+vxwei <- aggregated_by_intervals2[day_type == "weekend", interval]
+
+# create vector y
+vywey <- aggregated_by_intervals2[day_type == "weekend", steps_mean]
+
+# create smooth line
+lowe <- loess(vywey~vxwei)
+
+# plot
+lines(x = vxwei,
+     y = vywey,
+     col = "red")
+
+# add smoother
+lines(x = vxwei,
+      y = predict(lowe), 
+      col='red', 
+      lwd=2)
+
+# add legend
+legend(x = "topleft",
+       legend = c("Weekday", "Weekend"),
+       col = c("black", "red"),
+       lty = 1,
+       cex = 0.8)
+```
+
+Again, on weekends there is less activity in the early morning hours, but more activity during the day.  
